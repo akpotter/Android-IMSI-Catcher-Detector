@@ -13,12 +13,9 @@ import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.support.v4.app.NotificationCompat;
-import android.util.Log;
-
 import com.SecUpwN.AIMSICD.AIMSICD;
 import com.SecUpwN.AIMSICD.R;
 import com.SecUpwN.AIMSICD.activities.CustomPopUp;
-
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.text.SimpleDateFormat;
@@ -36,29 +33,31 @@ import java.util.Locale;
  *      E:V:A           20150704    Changed TAGs and fixed some formatting
  *
  */
+
 public class MiscUtils {
 
-    private static final String TAG = "MiscUtils";
+    private static final String TAG = "AIMSICD";
+    private static final String mTAG = "MiscUtils";
 
     public static String setAssetsString(Context context){
         BufferedReader reader = null;
         StringBuilder buildassets = new StringBuilder();
-        try {
+        try{
             reader = new BufferedReader(new InputStreamReader(context.getAssets().open("CREDITS")));
             String rline = reader.readLine().replace("'","\\'").replace("\\n","");
 
-            while (rline != null ) {
+            while (rline != null ){
                 buildassets.append(rline).append("\n");
                 rline = reader.readLine().replace("'","\\'").replace("\\n","");
             }
-        } catch (Exception ee) {
-            Log.e(TAG, ee.getMessage());
-        } finally {
-            if(reader != null) {
+        } catch (Exception ee){
+            ee.printStackTrace();
+        }finally {
+            if(reader != null){
                 try {
                     reader.close();
-                } catch (Exception ee) {
-                    Log.e(TAG, ee.getMessage());
+                } catch (Exception ee){
+                    ee.printStackTrace();
                 }
             }
         }
@@ -75,7 +74,8 @@ public class MiscUtils {
 
     public static String getCurrentTimeStamp(){
         //yyyyMMddHHmmss <-- this format is needed for OCID upload
-        return new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault()).format(new Date());
+        Date now = new Date();
+        return new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault()).format(now);
     }
 
     /*
@@ -109,6 +109,7 @@ public class MiscUtils {
         NotificationManager mNotificationManager =
                 (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         mNotificationManager.notify(NOTIFICATION_ID, mBuilder);
+
     }
 
 
@@ -122,9 +123,9 @@ public class MiscUtils {
     public static String logcatTimeStampParser(String line){
         String[] buffer = line.split(" ");
 
-        line = String.valueOf(Calendar.getInstance().get(Calendar.YEAR)) + buffer[0] + buffer[1];
+        line = String.valueOf(Calendar.getInstance().get(Calendar.YEAR))+buffer[0]+buffer[1];
         //   We don't need the last 4 digits in timestamp ".988" or it is too accurate.
-        return line.substring(0, line.length() - 4)
+        return line.substring(0,line.length()-4) // <-|
                 .replace(":", "")
                 .replace(".", "")
                 .replace("-", "");

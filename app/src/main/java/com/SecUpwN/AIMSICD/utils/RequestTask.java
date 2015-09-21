@@ -21,7 +21,6 @@ import com.SecUpwN.AIMSICD.constants.TinyDbKeys;
 import com.SecUpwN.AIMSICD.service.CellTracker;
 
 import org.apache.http.HttpResponse;
-import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ByteArrayEntity;
@@ -35,14 +34,14 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+
+//import com.SecUpwN.AIMSICD.utils.Helpers;
 
 /**
  *
@@ -107,19 +106,20 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
     public static final char RESTORE_DATABASE = 4;              // Restore DB from CSV files
     public static final char CELL_LOOKUP = 5;                   // TODO: "All Current Cell Details (ACD)"
 
-    public static final String TAG = "RequestTask";
+    public static final String TAG = "AIMSICD";
+    public static final String mTAG = "RequestTask";
 
-    private AIMSICDDbAdapter mDbAdapter;
-    private Context mAppContext;
-    private char mType;
+    private final AIMSICDDbAdapter mDbAdapter;
+    private final Context mAppContext;
+    private final char mType;
     private int mTimeOut;
 
     public RequestTask(Context context, char type) {
         super((Activity)context);
-        this.mType = type;
-        this.mAppContext = context.getApplicationContext();
-        this.mDbAdapter = new AIMSICDDbAdapter(mAppContext);
-        this.mTimeOut = REQUEST_TIMEOUT_MAPS;
+        mType = type;
+        mAppContext = context.getApplicationContext();
+        mDbAdapter = new AIMSICDDbAdapter(mAppContext);
+        mTimeOut = REQUEST_TIMEOUT_MAPS;
     }
 
     @Override
@@ -127,15 +127,17 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
 
         // We need to create a separate case for UPLOADING to DBe (OCID, MLS etc)
         switch (mType) {
-            // OCID upload request from "APPLICATION" drawer title
-            case DBE_UPLOAD_REQUEST:
+
+            // UPLOADING !!
+            case DBE_UPLOAD_REQUEST:   // OCID upload request from "APPLICATION" drawer title
                 try {
+
                     boolean prepared = mDbAdapter.prepareOpenCellUploadData();
 
-                    Log.i(TAG, "OCID upload data prepared - " + String.valueOf(prepared));
+                    Log.i(TAG, mTAG + ": OCID upload data prepared - " + String.valueOf(prepared));
                     if (prepared) {
                         File file = new File((mAppContext.getExternalFilesDir(null) + File.separator) + "OpenCellID/aimsicd-ocid-data.csv");
-                        publishProgress(25, 100);
+                        publishProgress(25,100);
 
                         MultipartEntity mpEntity = new MultipartEntity();
                         FileInputStream fin = new FileInputStream(file);
@@ -146,7 +148,7 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
                                 new ByteArrayInputStream(csv.getBytes()), "text/csv", "aimsicd-ocid-data.csv"));
 
                         ByteArrayOutputStream bAOS = new ByteArrayOutputStream();
-                        publishProgress(50, 100);
+                        publishProgress(50,100);
                         mpEntity.writeTo(bAOS);
                         bAOS.flush();
                         ByteArrayEntity bArrEntity = new ByteArrayEntity(bAOS.toByteArray());
@@ -166,13 +168,13 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
                         response = httpclient.execute(httppost);
                         publishProgress(80,100);
                         if (response!= null) {
-                            Log.i(TAG, "OCID Upload Response: "
+                            Log.i(TAG, mTAG + ": OCID Upload Response: "
                                     + response.getStatusLine().getStatusCode() + " - "
                                     + response.getStatusLine());
                             if (response.getStatusLine().getStatusCode() == org.apache.http.HttpStatus.SC_OK) {
                                 mDbAdapter.ocidProcessed();
                             }
-                            publishProgress(95, 100);
+                            publishProgress(95,100);
                         }
                         return "Successful";
                     } else {
@@ -180,17 +182,9 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
                         return null;
                     }
 
-                    // all caused by httpclient.execute(httppost);
-                } catch (UnsupportedEncodingException e) {
-                    Log.e(TAG, "Upload OpenCellID data Exception", e);
-                } catch (FileNotFoundException e) {
-                    Log.e(TAG, "Upload OpenCellID data Exception", e);
-                } catch (ClientProtocolException e) {
-                    Log.e(TAG, "Upload OpenCellID data Exception", e);
-                } catch (IOException e) {
-                    Log.e(TAG, "Upload OpenCellID data Exception", e);
                 } catch (Exception e) {
-                    Log.e(TAG, "Upload OpenCellID data Exception", e);
+                    Log.e(TAG, mTAG + ": Upload OpenCellID data Exception - " + e.getMessage());
+                    e.printStackTrace();
                 }
 
                 // DOWNLOADING...
@@ -203,11 +197,9 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
                     int progress = 0;
                     String dirName = getOCDBDownloadDirectoryPath(mAppContext);
                     File dir = new File(dirName);
-                    if (!dir.exists()) {
-                        dir.mkdirs();
-                    }
+                    if (!dir.exists()) { dir.mkdirs(); } // need a try{} catch{}
                     File file = new File(dir, OCDB_File_Name);
-                    Log.i(TAG, "DBE_DOWNLOAD_REQUEST write to: " + dirName + OCDB_File_Name);
+                    Log.i(TAG, mTAG + ": DBE_DOWNLOAD_REQUEST write to: " + dirName + OCDB_File_Name);
 
                     URL url = new URL(commandString[0]);
                     HttpURLConnection urlConnection = (HttpURLConnection) url.openConnection();
@@ -221,12 +213,13 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
                         try {
                             String error = Helpers.convertStreamToString(urlConnection.getErrorStream());
                             Helpers.msgLong(mAppContext, mAppContext.getString(R.string.download_error) + " " + error);
-                            Log.e(TAG, "Download OCID data error: " + error);
+                            Log.e(TAG, mTAG + ": Download OCID data error: " + error);
                         } catch (Exception e) {
                             Helpers.msgLong(mAppContext, mAppContext.getString(R.string.download_error) + " "
                                     + e.getClass().getName() + " - "
                                     + e.getMessage());
-                            Log.e(TAG, "Download OCID exception: ", e);
+                            Log.e(TAG, mTAG + ": Download OCID exception: " + e);
+                            e.printStackTrace();
                         }
                         return "Error";
                     } else {
@@ -234,11 +227,12 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
                         // This returns "-1" for streamed response (Chunked Transfer Encoding)
                         total = urlConnection.getContentLength();
                         if (total == -1 ) {
-                            Log.d(TAG, "doInBackground DBE_DOWNLOAD_REQUEST total not returned!");
+                            Log.d(TAG, mTAG + ":doInBackground DBE_DOWNLOAD_REQUEST total not returned!");
                             total = 1024; // Let's set it arbitrarily to something other than "-1"
                         } else {
-                            Log.d(TAG, "doInBackground DBE_DOWNLOAD_REQUEST total: " + total);
-                            publishProgress((int) (0.25 * total), total); // Let's show something!
+                            Log.d(TAG, mTAG + ":doInBackground DBE_DOWNLOAD_REQUEST total: " + total);
+                            //publishProgress(progress, total);
+                            publishProgress((int) (0.25*total), total); // Let's show something!
                         }
 
                         FileOutputStream output = new FileOutputStream(file, false);
@@ -251,7 +245,6 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
                             progress += count;
                             publishProgress(progress, total);
                         }
-                        input.close();
                         // flushing output
                         output.flush();
                         output.close();
@@ -260,14 +253,15 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
                     return "Successful";
 
                 } catch (MalformedURLException e) {
-                    Log.e(TAG, "Malformed URL", e);
+                    e.printStackTrace();
                     return null;
                 } catch (IOException e) {
-                    Log.w(TAG, "Problem reading data from steam", e);
+                    e.printStackTrace();
                     return null;
                 }
 
             case BACKUP_DATABASE:
+
                 if (mDbAdapter.backupDB()) {
                     return "Successful";
                 }
@@ -286,15 +280,19 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
     @Override
     protected void onPreExecute() {
         super.onPreExecute();
+        Log.d(TAG, mTAG + ":onPreExecute Started");
+        //progress.show();
     }
 
     @Override
     protected void onProgressUpdate(Integer... values) {
         super.onProgressUpdate(values);
         // Silence or Remove when working:
-        Log.v(TAG, "onProgressUpdate values[0]: " + values[0] + " values[1]: " + values[1]);
-        AIMSICD.mProgressBar.setProgress(values[0]);
-        AIMSICD.mProgressBar.setMax(values[1]);
+        Log.v(TAG, mTAG + ":onProgressUpdate values[0]: " + values[0] +
+                " values[1]: " + values[1]);
+        //setProgressPercent(progress[0]); ??
+        AIMSICD.mProgressBar.setProgress(values[0]);    // progress
+        AIMSICD.mProgressBar.setMax(values[1]);         // total
     }
 
     /**
@@ -319,8 +317,7 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
 
         switch (mType) {
             case DBE_DOWNLOAD_REQUEST:
-                // if `result` is null, it will evaluate to false, no need to check for null
-                if ("Successful".equals(result)) {
+                if (result != null && result.equals("Successful")) {
 
                     if (mDbAdapter.populateDBeImport()) {
                         Helpers.msgShort(mAppContext, mAppContext.getString(R.string.opencellid_data_successfully_received));
@@ -335,7 +332,7 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
                 break;
 
             case DBE_DOWNLOAD_REQUEST_FROM_MAP:
-                if ("Successful".equals(result)) {
+                if (result != null && result.equals("Successful")) {
                     if (mDbAdapter.populateDBeImport()) {
                         Intent intent = new Intent(MapViewerOsmDroid.updateOpenCellIDMarkers);
                         LocalBroadcastManager.getInstance(mAppContext).sendBroadcast(intent);
@@ -352,20 +349,20 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
                 break;
 
             case DBE_UPLOAD_REQUEST:
-                if ("Successful".equals(result)) {
+                if (result != null && result.equals("Successful")) {
                     Helpers.msgShort(mAppContext, mAppContext.getString(R.string.uploaded_bts_data_successfully));
+
                 } else {
                     Helpers.msgLong(mAppContext, mAppContext.getString(R.string.error_uploading_bts_data));
                 }
                 break;
 
             case RESTORE_DATABASE:
-                if ("Successful".equals(result)) {
+                if (result != null && result.equals("Successful")) {
                     Helpers.msgShort(mAppContext, mAppContext.getString(R.string.restore_database_completed));
                     Activity lActivity = getActivity();
-
-                    //Activity may be detached or destroyed
-                    if(lActivity != null) {
+                    
+                    if(lActivity != null) {//Activity may be detached or destroyed
                         final AlertDialog.Builder builder = new AlertDialog.Builder(lActivity);
                         builder.setTitle(R.string.restore_database_completed_title).setMessage(
                                 lActivity.getString(R.string.restore_database_completed));
@@ -377,15 +374,14 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
                 break;
 
             case BACKUP_DATABASE:
-                if ("Successful".equals(result)) {
+                if (result != null && result.equals("Successful")) {
 
                     // strings.xml: pref_last_db_backup_version
                     //tinydb.putInt(mContext.getString(R.string.pref_last_database_backup_version), AIMSICDDbAdapter.DATABASE_VERSION); //TODO
                     tinydb.putInt("pref_last_db_backup_version", AIMSICDDbAdapter.DATABASE_VERSION);
                     Activity lActivity = getActivity();
 
-                    //Activity may be detached or destroyed
-                    if(lActivity != null) {
+                    if(lActivity != null) {//Activity may be detached or destroyed
                         final AlertDialog.Builder builder = new AlertDialog.Builder(lActivity);
                         builder.setTitle(R.string.database_export_successful).setMessage(
                                 lActivity.getString(R.string.database_backup_successfully_saved_to) + "\n" + AIMSICDDbAdapter.FOLDER);
@@ -394,6 +390,7 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
                 } else {
                     Helpers.msgLong(mAppContext, mAppContext.getString(R.string.error_backing_up_data));
                 }
+                //break;
         }
     }
 
@@ -438,5 +435,9 @@ public class RequestTask extends BaseAsyncTask<String, Integer, String> {
      */
     public static String getOCDBDownloadDirectoryPath(Context context) {
         return (context.getExternalFilesDir(null) + File.separator) + "OpenCellID/";
+    }
+
+    public static String getOCDBDownloadFilePath(Context context) {
+        return getOCDBDownloadDirectoryPath(context) + OCDB_File_Name;
     }
 }

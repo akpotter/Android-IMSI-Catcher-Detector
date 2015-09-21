@@ -70,18 +70,19 @@ import java.util.List;
  */
 public class AtCommandFragment extends Fragment {
 
-    private static final String TAG = "AtCommandFrag";
-
     //Return value constants
-    private static final int SERIAL_INIT_OK = 100;
-    private static final int SERIAL_INIT_ERROR = 101;
-    private static final int ROOT_UNAVAILABLE = 102;
-    private static final int BUSYBOX_UNAVAILABLE = 103;
-    private static final List<String> mSerialDevices = new ArrayList<>();
+    private final int SERIAL_INIT_OK = 100;
+    private final int SERIAL_INIT_ERROR = 101;
+    private final int ROOT_UNAVAILABLE = 102;
+    private final int BUSYBOX_UNAVAILABLE = 103;
+
+    private final int EXECUTE_AT = 200;
+    private final int EXECUTE_COMMAND = 201;
 
     private Context mContext;
     private String mSerialDevice;
     private int mTimeout;
+    private final List<String> mSerialDevices = new ArrayList<>();
 
     private RelativeLayout mAtCommandLayout;
     private TextView mAtCommandError;
@@ -109,16 +110,16 @@ public class AtCommandFragment extends Fragment {
             mSerialDeviceSpinner = (Spinner) view.findViewById(R.id.serial_device_spinner);
             mSerialDeviceSpinner.setOnItemSelectedListener(new spinnerListener());
             mSerialDeviceSpinnerLabel = (TextView) view.findViewById(R.id.serial_device_spinner_title);
-            Spinner timeoutSpinner = (Spinner) view.findViewById(R.id.timeout_spinner);
-            timeoutSpinner.setOnItemSelectedListener(new timeoutSpinnerListener());
-            timeoutSpinner.setSelection(1);
+            Spinner timoutSpinner = (Spinner) view.findViewById(R.id.timeout_spinner);
+            timoutSpinner.setOnItemSelectedListener(new timoutSpinnerListener());
+            timoutSpinner.setSelection(1);
             mTimeout = 5000;
         }
 
         return view;
     }
 
-    private class timeoutSpinnerListener implements AdapterView.OnItemSelectedListener {
+    private class timoutSpinnerListener implements AdapterView.OnItemSelectedListener {
 
         @Override
         public void onItemSelected(AdapterView<?> parentView, View selectedItemView,
@@ -150,6 +151,7 @@ public class AtCommandFragment extends Fragment {
 
         @Override
         public void onNothingSelected(AdapterView<?> parentView) {
+
         }
     }
 
@@ -215,7 +217,7 @@ public class AtCommandFragment extends Fragment {
         public void onClick(View v) {
             if (mAtCommand.getText() != null) {
                 String command = mAtCommand.getText().toString();
-                Log.i(TAG, "AT Command Detected: " + command);
+                Log.i("AIMSICD", "AT Command Detected: " + command);
                 executeAT();
             }
         }
@@ -270,13 +272,12 @@ public class AtCommandFragment extends Fragment {
             // Use RIL Serial Device details from the System Property
             try {
                 String rilDevice = Helpers.getSystemProp(mContext, "rild.libargs", "UNKNOWN");
-                mSerialDevice = ("UNKNOWN".equals(rilDevice) ? rilDevice : rilDevice.substring(3));
+                mSerialDevice = (rilDevice.equals("UNKNOWN") ? rilDevice : rilDevice.substring(3));
 
-                if (!"UNKNOWN".equals(mSerialDevice)) {
+                if (!mSerialDevice.equals("UNKNOWN")) {
                     mSerialDevices.add(mSerialDevice);
                 }
             } catch (StringIndexOutOfBoundsException e) {
-                Log.w(TAG, e.getMessage());
                 // ignore, move on
             }
 
@@ -292,7 +293,7 @@ public class AtCommandFragment extends Fragment {
                 // QC: /dev/smd[0-7]
                 if (name.matches("^smd.$")) {
                     add = true;
-                } else if ("radio".equals(name)) {
+                } else if (name.equals("radio")) {
                     // MTK: /dev/radio/*atci*
                     for (File subfile : file.listFiles()) {
                         String subname = subfile.getName();
@@ -318,10 +319,10 @@ public class AtCommandFragment extends Fragment {
                     @Override
                     public void commandOutput(int id, String line) {
                         if (id == 0) {
-                            if (!line.trim().isEmpty() && line.contains("/dev/")) {
+                            if (!line.trim().equals("") && line.contains("/dev/")) {
                                 int place = line.indexOf("=") + 1;
                                 mSerialDevices.add(line.substring(place, line.length() - 1));
-                                mAtResponse.append(getString(R.string.at_command_response_found)+line.substring(place, line.length() - 1) + "\n");
+                                mAtResponse.append(getString(R.string.at_command_response_found)+line.substring(place, line.length() - 1)+"\n");
                             }
                         }
                         super.commandOutput(id, line);
@@ -334,7 +335,7 @@ public class AtCommandFragment extends Fragment {
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "InitSerialDevice ", e);
+            Log.e("AIMSICD", "ATCoP: initSerialDevice " + e);
         }
 
         if (!mSerialDevices.isEmpty()) {
@@ -360,18 +361,14 @@ public class AtCommandFragment extends Fragment {
         }
     }
 
-    private AtCommandTerminal getSerialDevice() {
+    private void openSerialDevice() {
         if (mCommandTerminal == null) {
             try {
                 mCommandTerminal = new TtyPrivFile(mSerialDevice);
-                return mCommandTerminal;
             } catch (IOException e) {
                 mAtResponse.append(e.toString());
             }
-        } else {
-            return mCommandTerminal;
         }
-        return null;
     }
 
     private void executeAT() {
@@ -379,9 +376,9 @@ public class AtCommandFragment extends Fragment {
         // We need a device-type check here, perhaps: gsm.version.ril-impl.
         Editable cmd = mAtCommand.getText();
         if (cmd != null && cmd.length() != 0) {
-            Log.d(TAG, "ExecuteAT: attempting to send: " + cmd.toString());
-
-            if (getSerialDevice() != null) {
+            //Log.d("AIMSICD", "executeAT: attempting to send: " + cmd.toString() );
+            openSerialDevice();
+            if (mCommandTerminal != null) { // if openSerialDevice() did not fail
                 mCommandTerminal.send(cmd.toString(), new Handler(Looper.getMainLooper()) {
                     @Override
                     public void handleMessage(Message message) {
@@ -406,6 +403,48 @@ public class AtCommandFragment extends Fragment {
 
     }
 
+    // old shell command support
+    private void executeCommand() {
+        if (mAtCommand.getText() != null) {
+
+            /**
+             * Can't touch the main UI from the callback,
+             * add the response to the SB and then add to the main UI.
+             *
+             * See note at method "initSerialDevice"
+             */
+            final StringBuilder response = new StringBuilder();
+
+            try {
+                Command cmd = new Command(EXECUTE_COMMAND,
+                        mAtCommand.getText().toString() + "\n") {
+
+                    @Override
+                    public void commandOutput(int id, String line) {
+                        if (id == EXECUTE_COMMAND) {
+                            if (!line.trim().equals("")) {
+                                response.append(line).append("\n");
+                            }
+                        }
+
+                        super.commandOutput(id, line);
+                    }
+
+                };
+
+                Log.i("AIMSICD", "Trying to executeCommand: " + cmd);
+                Shell shell = RootShell.getShell(true);
+                shell.add(cmd);
+                commandWait(shell, cmd);
+
+                mAtResponse.append(response.toString());
+
+            } catch (Exception e) {
+                Log.e("AIMSICD", "Failed to executeCommand: " + e);
+            }
+        }
+    }
+
     /**
      * This below method is part of the RootTools Project: https://github.com/Stericson/RootTools
      * Copyright (c) 2012 Stephen Erickson, Chris Ravenscroft, Dominik Schuermann, Adam Shanks
@@ -422,26 +461,25 @@ public class AtCommandFragment extends Fragment {
                         cmd.wait(mTimeout);
                     }
                 } catch (InterruptedException e) {
-                    Log.e(TAG, e.getMessage());
+                    e.printStackTrace();
                 }
             }
             if (!cmd.isExecuting() && !cmd.isFinished()) {
-                Exception e = new Exception();
-
                 if (!shell.isExecuting && !shell.isReading) {
-                    Log.w(TAG, "Waiting for a command to be executed in a shell that is not executing and not reading! \n\n Command: " + cmd.getCommand());
+                    Log.e("AIMSICD", "Waiting for a command to be executed in a shell that is not executing and not reading! \n\n Command: " + cmd.getCommand());
+                    Exception e = new Exception();
                     e.setStackTrace(Thread.currentThread().getStackTrace());
-                    Log.e(TAG, e.getMessage(), e);
-
+                    e.printStackTrace();
                 } else if (shell.isExecuting && !shell.isReading) {
-                    Log.e(TAG, "Waiting for a command to be executed in a shell that is executing but not reading! \n\n Command: " + cmd.getCommand());
+                    Log.e("AIMSICD", "Waiting for a command to be executed in a shell that is executing but not reading! \n\n Command: " + cmd.getCommand());
+                    Exception e = new Exception();
                     e.setStackTrace(Thread.currentThread().getStackTrace());
-                    Log.e(TAG, e.getMessage(), e);
-
+                    e.printStackTrace();
                 } else {
-                    Log.e(TAG, "Waiting for a command to be executed in a shell that is not reading! \n\n Command: " + cmd.getCommand());
+                    Log.e("AIMSICD", "Waiting for a command to be executed in a shell that is not reading! \n\n Command: " + cmd.getCommand());
+                    Exception e = new Exception();
                     e.setStackTrace(Thread.currentThread().getStackTrace());
-                    Log.e(TAG, e.getMessage(), e);
+                    e.printStackTrace();
                 }
             }
         }
